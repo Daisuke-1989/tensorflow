@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Test TensorFlow.js</title>
+</head>
+
+<body>
+  <video id="video"></video>
+  <canvas id="canvas" style="width: 300px;height: 300px;border: 1px solid black;"></canvas>
+  <canvas id="tfCanvas" style="border: 1px solid black;"></canvas>
+  <canvas id="testCanvas" style="width: 300px;height: 300px;border: 1px solid black;"></canvas>
+  <input type="button" value="clear" id="clear">
+  <input type="button" value="search" id="search">
+  <img id="image" width="300px" height="300px">
+  <span id="result" style="font-size: 48pt;"></span>
+  <p id="time"></p>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs/dist/tf.min.js"></script>
+
+  <script>
+    "use strict";
+    let canvas_mouse_event = false; //スイッチ [ true=線を引く, false=線は引かない ]  ＊＊＊
+    let oldX = 0; //１つ前の座標を代入するための変数
+    let oldY = 0; //１つ前の座標を代入するための変数
+    let bold_line = 3; //ラインの太さをここで指定
+    let color = "black"; //ラインの色をここで指定
+    let clearBtn = document.getElementById('clear');
+    let searchBtn = document.getElementById('search');
+    let hiddenImage = document.getElementById('image');
+    let model;
+    console.log(tf.version)
+    const can = document.getElementById('canvas'); //CanvasElement
+    const ctx = can.getContext('2d');
+    // console.log(tf.version)
+    can.addEventListener('mousedown', function (e) {
+      oldX = e.offsetX;       //MOUSEDOWNしたX横座標取得
+      oldY = e.offsetY; //MOUSEDOWN Y高さ座標取得
+      canvas_mouse_event = true;
+    })
+    can.addEventListener('mousemove', function (e) {
+      if (canvas_mouse_event == true) {
+        const px = e.offsetX;
+        const py = e.offsetY;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = bold_line;
+        ctx.beginPath();
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        ctx.moveTo(oldX, oldY);
+        ctx.lineTo(px, py);
+        ctx.stroke();
+        oldX = px;
+        oldY = py;
+      }
+    })
+    can.addEventListener('mouseup', function () {
+      canvas_mouse_event = false;
+    })
+    can.addEventListener('mouseout', function () {
+      canvas_mouse_event = false;
+    })
+    clearBtn.addEventListener('click', function () {
+      ctx.beginPath();
+      ctx.clearRect(0, 0, can.width, can.height);
+    })
+
+    // Parameters
+    const CANVAS_SIZE = [300, 300];
+    const TARGET_AREA = [0.25, 0.25, 0.75, 0.75]; // y1, x1, y2, x2
+    const WEBCAM_CONFIG = { facingMode: "environment" };
+    let MODEL_SIZE = [-1, -1, -1, -1]; // NHWC. get from model
+
+    // async function initCam() {
+    //   // const videoElement = document.createElement("video");
+    //   try {
+    //     const videoElement = document.getElementById("video")
+    //     videoElement.width = CANVAS_SIZE[0];
+    //     videoElement.height = CANVAS_SIZE[1];
+    //     const cam = await tf.data.webcam(videoElement, WEBCAM_CONFIG);
+    //     return cam;
+    //   } catch (e) {
+    //     alert("[initCam] failed");
+    //     alert(e.message);
+    //     return null;
+    //   }
+    // }
+
+    async function initModel() {
+      try {
+        model = await tf.loadLayersModel("./conv_model_tfjs/model.json");
+        MODEL_SIZE = model.input.shape;
+        console.log("OK");
+        return model;
+      } catch (e) {
+        try {
+          alert("[initModel] failed to open local model. try to load from server");
+          // let model = await tf.loadLayersModel("https://iwatake2222.github.io/tfjs_study/mnist/conv_mnist_tfjs/model.json");
+          // MODEL_SIZE = model.input.shape;
+          // return model;
+        } catch (e) {
+          alert("[initModel] failed");
+          alert(e.message);
+          return null;
+        }
+      }
+    }
+
+
+    (async function () {
+      const model = await initModel();
+      if (model == null) {
+        document.getElementById("result").innerHTML = "init failed"
+        return;
+      }
+      // while (1) {
+      //   /* Get image and pre process */
+      //   const t0 = performance.now();
+      //   const inputTensor = await getImage(cam);
+
+      //   /* Inference */
+      //   const t1 = performance.now();
+      //   const scores = await model.predict(inputTensor).data();
+      //   inputTensor.dispose();
+
+      //   /* Post process */
+      //   const t2 = performance.now();
+      //   const maxScoreIndex = await tf.argMax(scores).array();
+
+      //   /* Display result */
+      //   const t3 = performance.now();
+      //   console.log(scores);
+      //   document.getElementById("result").innerHTML = "Num: " + maxScoreIndex + " (" + scores[maxScoreIndex].toFixed(3) + ")";
+
+      //   const t4 = performance.now();
+      //   document.getElementById("time").innerHTML = `Time[ms]: Total = ${(t4 - t0).toFixed(3)},
+      //     PreProcess = ${(t1 - t0).toFixed(3)},
+      //     Inference = ${(t2 - t1).toFixed(3)},
+      //     PostProcess = ${(t3 - t2).toFixed(3)}`;
+      // }
+    }());
+    async function searchImage() {
+      let cam = ctx.getImageData(0, 0, 300, 300);
+      let testCan = document.getElementById('testCanvas').getContext('2d').putImageData(cam, 0, 0);
+      let camURL = can.toDataURL();
+      hiddenImage.src = camURL;
+      const t0 = performance.now();
+      const inputTensor = await getImage(cam);
+      /* Inference */
+      const t1 = performance.now();
+      const scores = await model.predict(inputTensor).data();
+      inputTensor.dispose();
+
+      /* Post process */
+      const t2 = performance.now();
+      const maxScoreIndex = await tf.argMax(scores).array();
+
+      /* Display result */
+      const t3 = performance.now();
+      console.log(scores);
+      document.getElementById("result").innerHTML = "Num: " + maxScoreIndex + " (" + scores[maxScoreIndex].toFixed(3) + ")";
+
+      const t4 = performance.now();
+      document.getElementById("time").innerHTML = `Time[ms]: Total = ${(t4 - t0).toFixed(3)},
+          PreProcess = ${(t1 - t0).toFixed(3)},
+          Inference = ${(t2 - t1).toFixed(3)},
+          PostProcess = ${(t3 - t2).toFixed(3)}`;
+    }
+    function getImage(cam) {
+      const imgCam = tf.browser.fromPixels(cam); /* [300x300x3] tensor */
+      console.dir(imgCam);
+      const processedImg = tf.tidy(() => {
+        /* Crop center and Resize to model input size (28x28) */
+        /* need expandDims and squeeze to ficropAndResize */
+        let img = tf.image.cropAndResize(imgCam.expandDims(), [TARGET_AREA], [0], [MODEL_SIZE[1], MODEL_SIZE[2]]).squeeze()
+
+        /* Convert to grayscale (keep dimension(HWC))*/
+        img = img.mean(2, true);
+
+        /* Reverse black and white */
+        img = tf.sub(tf.scalar(255), img);
+
+        // /* 0.0 - 1.0 */
+        // img = img.cast("float32").div(tf.scalar(255));
+        /* Rough binarization */
+        img = img.cast("float32").div(tf.scalar(128));  /* 0.0 - 2.0 */
+        img = img.clipByValue(0.5, 1.5).sub(0.5); /* 0.5 - 1.5 -> 0.0 - 1.0 */
+
+        return img;
+      })
+      imgCam.dispose();
+      tf.browser.toPixels(processedImg.resizeBilinear([128, 128]), document.getElementById("tfCanvas"));
+      /* expand dimension (HWC ->  NHWC) */
+      return processedImg.expandDims();
+    }
+    searchBtn.addEventListener('click', function () {
+      searchImage();
+    })
+  </script>
+</body>
+</html>
